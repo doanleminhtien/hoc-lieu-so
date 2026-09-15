@@ -22,6 +22,15 @@ def run_e2e_tests():
 
     # 1. Reset Database & Seed Data
     print("\n--- 1. DATABASE & SEED VERIFICATION ---")
+    from app.core.database import db_url
+    masked_url = db_url.split("@")[-1] if "@" in db_url else db_url
+    print(f"[DB ENGINE] POSTGRESQL")
+    print(f"[DB DIALECT] {engine.dialect.name}")
+    print(f"[DB TARGET] {masked_url}")
+    
+    if engine.name != "postgresql":
+        raise RuntimeError(f"Bộ test chỉ chấp nhận POSTGRESQL làm Database duy nhất (Hiện tại: {engine.name}). Không dùng SQLite!")
+
     seed_data()
     db = SessionLocal()
 
@@ -324,9 +333,58 @@ def run_e2e_tests():
     res = client.get("/api/v1/notifications", headers={"Authorization": f"Bearer {lecturer_token}"})
     record_test("TC-NOTIF-001", "Notification", "Giảng viên lấy danh sách thông báo hệ thống", "200 OK + List", f"{res.status_code}", res.status_code == 200 and res.json().get("success"))
 
+    # TC-HLT-001: Health Check Endpoint
+    res = client.get("/health")
+    record_test("TC-HLT-001", "System", "Kiểm tra Health Check API hệ thống", "200 OK + Healthy", f"{res.status_code}", res.status_code == 200 and res.json().get("status") == "healthy")
+
     # TC-PROF-001: User update profile
     res = client.put("/api/v1/auth/profile", json={"full_name": "TS. Nguyễn Văn Hải - Updated"}, headers={"Authorization": f"Bearer {lecturer_token}"})
     record_test("TC-PROF-001", "Profile", "Người dùng cập nhật thông tin cá nhân", "200 OK", f"{res.status_code}", res.status_code == 200 and res.json().get("success"))
+
+    # -------------------------------------------------------------
+    # 10. NEW FEATURE APIS: COMMENTS, REVIEWS, HISTORY, ALLOW_DOWNLOAD
+    # -------------------------------------------------------------
+    print("\n--- 10. NEW FEATURE APIS (COMMENTS, REVIEWS, HISTORY, ALLOW_DOWNLOAD) ---")
+
+    # Target published material
+    pub_mat = db.query(Material).filter(Material.approval_status == "PUBLISHED").first()
+    pub_mat_id = pub_mat.id if pub_mat else 1
+
+    # TC-CMT-001: Post a comment
+    res = client.post(f"/api/v1/materials/{pub_mat_id}/comments", json={"content": "Bài giảng rất hay và đầy đủ!"}, headers={"Authorization": f"Bearer {student_token}"})
+    comment_id = res.json().get("data", {}).get("id") if res.status_code == 200 else None
+    record_test("TC-CMT-001", "Comment", "Sinh viên gửi bình luận thảo luận", "200 OK", f"{res.status_code}", res.status_code == 200 and res.json().get("success"))
+
+    # TC-CMT-002: Fetch comments
+    res = client.get(f"/api/v1/materials/{pub_mat_id}/comments")
+    record_test("TC-CMT-002", "Comment", "Lấy danh sách bình luận của học liệu", "200 OK + List", f"{res.status_code}", res.status_code == 200 and len(res.json()["data"]["items"]) > 0)
+
+    # TC-CMT-003: Delete comment
+    if comment_id:
+        res = client.delete(f"/api/v1/comments/{comment_id}", headers={"Authorization": f"Bearer {student_token}"})
+        record_test("TC-CMT-003", "Comment", "Sinh viên xóa bình luận của mình", "200 OK", f"{res.status_code}", res.status_code == 200 and res.json().get("success"))
+
+    # TC-REV-001: Post a 5-star review
+    res = client.post(f"/api/v1/materials/{pub_mat_id}/reviews", json={"rating": 5, "comment": "Tài liệu tuyệt vời, 5 sao!"}, headers={"Authorization": f"Bearer {student_token}"})
+    review_id = res.json().get("data", {}).get("id") if res.status_code == 200 else None
+    record_test("TC-REV-001", "Review", "Sinh viên gửi đánh giá 5 sao cho bài giảng", "200 OK", f"{res.status_code}", res.status_code == 200 and res.json().get("success"))
+
+    # TC-REV-002: Fetch reviews & rating stats
+    res = client.get(f"/api/v1/materials/{pub_mat_id}/reviews")
+    record_test("TC-REV-002", "Review", "Lấy danh sách đánh giá và thống kê điểm trung bình", "200 OK + Stats", f"{res.status_code}", res.status_code == 200 and res.json()["data"]["stats"]["average_rating"] > 0)
+
+    # TC-HIS-001: Reading History
+    res = client.get("/api/v1/materials/history/me", headers={"Authorization": f"Bearer {student_token}"})
+    record_test("TC-HIS-001", "History", "Sinh viên xem nhật ký bài giảng đã đọc gần đây", "200 OK + List", f"{res.status_code}", res.status_code == 200 and res.json().get("success"))
+
+    # TC-DWN-002: Allow download restriction check
+    if pub_mat:
+        pub_mat.allow_download = False
+        db.commit()
+        res = client.get(f"/api/v1/materials/{pub_mat_id}/download", headers={"Authorization": f"Bearer {student_token}"})
+        record_test("TC-DWN-002", "Download", "Chặn tải về khi allow_download=False (Chỉ đọc online)", "403 Forbidden", f"{res.status_code}", res.status_code == 403)
+        pub_mat.allow_download = True
+        db.commit()
 
     # TC-MAT-002: Lecturer Soft Delete Material
     if uploaded_mat_id:

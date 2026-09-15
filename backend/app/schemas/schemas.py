@@ -113,6 +113,7 @@ class MaterialBase(BaseModel):
     language: Optional[str] = "vi"
     category_id: int
     access_level: Optional[str] = "PUBLIC"
+    allow_download: Optional[bool] = True
 
 class MaterialCreate(MaterialBase):
     tags: Optional[List[str]] = []
@@ -128,6 +129,7 @@ class MaterialUpdate(BaseModel):
     language: Optional[str] = None
     category_id: Optional[int] = None
     access_level: Optional[str] = None
+    allow_download: Optional[bool] = None
     tags: Optional[List[str]] = None
 
 class AuthorInfo(BaseModel):
@@ -152,6 +154,7 @@ class MaterialResponse(MaterialBase):
     thumbnail_url: Optional[str] = None
     view_count: int
     download_count: int
+    allow_download: bool = True
     is_favorite: Optional[bool] = False
     files: List[MaterialFileResponse] = []
     tags: List[TagResponse] = []
@@ -219,3 +222,51 @@ class StudentDashboardKPI(BaseModel):
     download_count: int
     recent_viewed: List[dict]
     recommended_materials: List[dict]
+
+# Comment Schemas
+class CommentCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=1000)
+
+class CommentUserInfo(BaseModel):
+    id: int
+    full_name: str
+    avatar_url: Optional[str] = None
+    role_name: Optional[str] = "STUDENT"
+
+    class Config:
+        from_attributes = True
+
+class CommentResponse(BaseModel):
+    id: int
+    material_id: int
+    user_id: int
+    content: str
+    created_at: datetime
+    updated_at: datetime
+    user: Optional[CommentUserInfo] = None
+
+    class Config:
+        from_attributes = True
+
+# Review / Rating Schemas
+class ReviewCreate(BaseModel):
+    rating: int = Field(..., ge=1, le=5, description="Điểm đánh giá từ 1 đến 5 sao")
+    comment: Optional[str] = Field(None, max_length=1000)
+
+class ReviewResponse(BaseModel):
+    id: int
+    material_id: int
+    user_id: int
+    rating: int
+    comment: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    user: Optional[CommentUserInfo] = None
+
+    class Config:
+        from_attributes = True
+
+class MaterialRatingStats(BaseModel):
+    average_rating: float
+    total_reviews: int
+    rating_counts: dict

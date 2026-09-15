@@ -71,12 +71,48 @@ export interface Material {
   thumbnail_url?: string;
   view_count: number;
   download_count: number;
+  avg_rating?: number;
+  review_count?: number;
   is_favorite?: boolean;
   files: MaterialFile[];
   tags: Tag[];
   published_at?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface CommentUser {
+  id: number;
+  full_name: string;
+  avatar_url?: string;
+  role_name?: string;
+}
+
+export interface Comment {
+  id: number;
+  material_id: number;
+  user_id: number;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  user?: CommentUser;
+}
+
+export interface Review {
+  id: number;
+  material_id: number;
+  user_id: number;
+  rating: number;
+  comment?: string;
+  created_at: string;
+  updated_at: string;
+  user?: CommentUser;
+}
+
+export interface RatingStats {
+  average_rating: number;
+  total_reviews: number;
+  rating_counts: Record<number, number>;
 }
 
 export interface APIResponse<T = any> {

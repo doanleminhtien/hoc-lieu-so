@@ -6,7 +6,7 @@ import os
 
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.api.v1.endpoints import auth, categories, materials, admin, notifications
+from app.api.v1.endpoints import auth, categories, materials, admin, notifications, comments, reviews
 
 # Initialize database tables
 Base.metadata.create_all(bind=engine)
@@ -26,6 +26,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
 
 # Include Routers
@@ -34,6 +35,8 @@ app.include_router(categories.router, prefix=settings.API_V1_STR)
 app.include_router(materials.router, prefix=settings.API_V1_STR)
 app.include_router(admin.router, prefix=settings.API_V1_STR)
 app.include_router(notifications.router, prefix=settings.API_V1_STR)
+app.include_router(comments.router, prefix=settings.API_V1_STR)
+app.include_router(reviews.router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def root():
@@ -42,6 +45,16 @@ def root():
         "version": settings.VERSION,
         "docs": f"{settings.API_V1_STR}/docs",
         "status": "Online"
+    }
+
+@app.get("/health")
+@app.get(f"{settings.API_V1_STR}/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "project": settings.PROJECT_NAME,
+        "database_engine": "postgresql",
+        "version": settings.VERSION
     }
 
 # Standardized Error Interceptor

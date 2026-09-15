@@ -1,9 +1,11 @@
 from app.models.models import (
     Base, Role, User, Category, Material, MaterialFile, Tag, material_tags,
-    AccessPermission, MaterialView, MaterialDownload, Favorite, Notification, AuditLog
+    AccessPermission, MaterialView, MaterialDownload, Favorite, Notification, AuditLog,
+    Comment, Review
 )
 
 __all__ = [
     "Base", "Role", "User", "Category", "Material", "MaterialFile", "Tag", "material_tags",
-    "AccessPermission", "MaterialView", "MaterialDownload", "Favorite", "Notification", "AuditLog"
+    "AccessPermission", "MaterialView", "MaterialDownload", "Favorite", "Notification", "AuditLog",
+    "Comment", "Review"
 ]

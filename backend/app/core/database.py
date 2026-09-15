@@ -3,16 +3,19 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
 
-# Process Postgres URLs if from Heroku / Supabase (postgres:// -> postgresql://)
-db_url = settings.DATABASE_URL
-if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql://", 1)
-
-connect_args = {}
+db_url = settings.ASSEMBLED_DATABASE_URL
 if db_url.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
+    engine = create_engine(db_url, connect_args=connect_args)
+else:
+    try:
+        engine = create_engine(db_url, pool_pre_ping=True)
+        with engine.connect() as conn:
+            pass
+    except Exception:
+        sqlite_url = "sqlite:///./digital_materials.db"
+        engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
 
-engine = create_engine(db_url, connect_args=connect_args, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy import (
-    Column, Integer, String, Text, Boolean, DateTime, ForeignKey, BigInteger, SmallInteger, CheckConstraint, Table, JSON, Index
+    Column, Integer, String, Text, Boolean, DateTime, ForeignKey, BigInteger, SmallInteger, CheckConstraint, Table, JSON, Index, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -85,6 +85,7 @@ class Material(Base):
     thumbnail_url = Column(String(500), nullable=True)
     view_count = Column(Integer, default=0)
     download_count = Column(Integer, default=0)
+    allow_download = Column(Boolean, default=True, nullable=False)
     is_deleted = Column(Boolean, default=False)
     
     published_at = Column(DateTime, nullable=True)
@@ -208,3 +209,37 @@ class AuditLog(Base):
     details = Column(JSON, nullable=True)
     ip_address = Column(String(45), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Comment(Base):
+    __tablename__ = "comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    material_id = Column(Integer, ForeignKey("materials.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    material = relationship("Material", backref="comments")
+    user = relationship("User", backref="comments")
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    material_id = Column(Integer, ForeignKey("materials.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    rating = Column(SmallInteger, nullable=False) # 1 to 5
+    comment = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'material_id', name='uq_user_material_review'),
+        CheckConstraint('rating >= 1 AND rating <= 5', name='ck_review_rating_range'),
+    )
+
+    material = relationship("Material", backref="reviews")
+    user = relationship("User", backref="reviews")

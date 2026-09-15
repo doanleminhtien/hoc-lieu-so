@@ -48,6 +48,7 @@ class MaterialService:
             category_id=material_in.category_id,
             author_id=author_id,
             access_level=material_in.access_level or "PUBLIC",
+            allow_download=material_in.allow_download if material_in.allow_download is not None else True,
             approval_status="DRAFT"
         )
         db.add(new_material)
@@ -200,6 +201,67 @@ class MaterialService:
         )
         db.add(audit)
 
+        db.commit()
+        db.refresh(material)
+        return material
+
+    @staticmethod
+    def update_material(
+        db: Session,
+        material: Material,
+        mat_in: MaterialUpdate,
+        file: Optional[UploadFile],
+        storage: BaseStorageProvider
+    ) -> Material:
+        for field, value in mat_in.dict(exclude_unset=True).items():
+            if field != "tags" and value is not None:
+                setattr(material, field, value)
+
+        if mat_in.tags is not None:
+            material.tags.clear()
+            for tag_name in mat_in.tags:
+                tag_name_clean = tag_name.strip()
+                if tag_name_clean:
+                    tag_slug = slugify(tag_name_clean)
+                    tag = db.query(Tag).filter(Tag.slug == tag_slug).first()
+                    if not tag:
+                        tag = Tag(name=tag_name_clean, slug=tag_slug)
+                        db.add(tag)
+                        db.flush()
+                    material.tags.append(tag)
+
+        # Handle File Replacement if provided
+        if file:
+            allowed_exts = {".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".zip", ".jpg", ".png"}
+            ext = os.path.splitext(file.filename)[1].lower()
+            if ext not in allowed_exts:
+                raise HTTPException(status_code=400, detail=f"Định dạng file '{ext}' không được hỗ trợ.")
+
+            stored_name, storage_path = storage.save_file(file.file, file.filename)
+            file.file.seek(0, os.SEEK_END)
+            file_size = file.file.tell()
+            file.file.seek(0)
+
+            # Remove old file records
+            db.query(MaterialFile).filter(MaterialFile.material_id == material.id).delete()
+
+            mat_file = MaterialFile(
+                material_id=material.id,
+                original_name=file.filename,
+                stored_name=stored_name,
+                storage_path=storage_path,
+                file_size=file_size,
+                mime_type=file.content_type or "application/octet-stream",
+                file_extension=ext
+            )
+            db.add(mat_file)
+
+        # Reset REJECTED status back to DRAFT for resubmission
+        if material.approval_status == "REJECTED":
+            material.approval_status = "DRAFT"
+            material.rejection_reason = None
+
+        material.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(material)
         return material

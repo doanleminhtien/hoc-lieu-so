@@ -1,5 +1,7 @@
+import json
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 
@@ -8,7 +10,84 @@ from app.models import User, Role, Material, MaterialView, MaterialDownload, Cat
 from app.schemas.schemas import APIResponse, UserResponse, UserUpdate, AuditLogResponse
 from app.api.v1.deps import require_role, get_current_user
 
+try:
+    from app.core.security import get_password_hash
+except ImportError:
+    def get_password_hash(password: str) -> str:
+        return password
+
 router = APIRouter(prefix="/admin", tags=["Admin Operations"])
+
+ROLE_MAP = {
+    "Giảng viên": "LECTURER",
+    "Sinh viên": "STUDENT",
+    "Quản trị viên": "ADMIN",
+    "LECTURER": "LECTURER",
+    "STUDENT": "STUDENT",
+    "ADMIN": "ADMIN"
+}
+
+class AdminUserCreateRequest(BaseModel):
+    email: EmailStr
+    password: str = "Password123@"
+    full_name: str
+    user_code: Optional[str] = None
+    faculty: Optional[str] = None
+    role_name: Optional[str] = "LECTURER"
+
+class AdminUserUpdateRequest(BaseModel):
+    full_name: Optional[str] = None
+    user_code: Optional[str] = None
+    faculty: Optional[str] = None
+    role_name: Optional[str] = None
+    role: Optional[str] = None
+    role_id: Optional[int] = None
+
+
+def format_audit_details(action: str, details) -> str:
+    """Chuyển đổi dữ liệu JSON thô thành câu văn Tiếng Việt dễ đọc."""
+    if not details:
+        return "Không có thông tin chi tiết"
+    
+    if isinstance(details, str):
+        try:
+            details = json.loads(details)
+        except Exception:
+            return details
+            
+    if not isinstance(details, dict):
+        return str(details)
+
+    if action == "USER_CREATE":
+        email = details.get("created_email") or details.get("email") or "người dùng"
+        role = details.get("role") or ""
+        role_vn = {"LECTURER": "Giảng viên", "STUDENT": "Sinh viên", "ADMIN": "Quản trị viên"}.get(role, role)
+        return f"Tạo mới tài khoản {email}" + (f" với vai trò {role_vn}" if role_vn else "")
+
+    elif action == "USER_BLOCK":
+        email = details.get("user_email") or details.get("email") or ""
+        return f"Đã khóa tài khoản {email}".strip()
+
+    elif action == "USER_UNBLOCK":
+        email = details.get("user_email") or details.get("email") or ""
+        return f"Đã mở khóa tài khoản {email}".strip()
+
+    elif action == "MATERIAL_APPROVE":
+        title = details.get("title") or "học liệu"
+        return f"Đã phê duyệt học liệu: \"{title}\""
+
+    elif action == "MATERIAL_REJECT":
+        title = details.get("title") or "học liệu"
+        reason = details.get("reason") or ""
+        return f"Từ chối học liệu: \"{title}\"" + (f" (Lý do: {reason})" if reason else "")
+
+    elif action in ["USER_UPDATE", "USER_EDIT"]:
+        email = details.get("user_email") or details.get("email") or ""
+        return f"Cập nhật thông tin tài khoản {email}".strip()
+
+    parts = [f"{k}: {v}" for k, v in details.items()]
+    return ", ".join(parts)
+
 
 @router.get("/dashboard", response_model=APIResponse)
 def get_admin_dashboard_kpis(
@@ -22,7 +101,6 @@ def get_admin_dashboard_kpis(
     total_views = db.query(func.count(MaterialView.id)).scalar() or 0
     total_downloads = db.query(func.count(MaterialDownload.id)).scalar() or 0
 
-    # Materials by Category (SQL Aggregation)
     cat_counts = (
         db.query(Category.name, func.count(Material.id))
         .join(Material, Material.category_id == Category.id)
@@ -32,7 +110,6 @@ def get_admin_dashboard_kpis(
     )
     by_category = [{"category": name, "count": count} for name, count in cat_counts]
 
-    # Popular Materials
     popular = (
         db.query(Material.id, Material.title, Material.view_count, Material.download_count)
         .filter(Material.approval_status == "PUBLISHED", Material.is_deleted == False)
@@ -54,6 +131,7 @@ def get_admin_dashboard_kpis(
             "popular_materials": pop_list
         }
     )
+
 
 @router.get("/users", response_model=APIResponse)
 def list_users(
@@ -89,6 +167,86 @@ def list_users(
     ]
     return APIResponse(data={"items": result, "total": total, "page": page, "limit": limit})
 
+
+@router.post("/users", response_model=APIResponse)
+def create_user(
+    user_in: AdminUserCreateRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_role(["ADMIN"]))
+):
+    existing_user = db.query(User).filter(User.email == user_in.email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email này đã được sử dụng trong hệ thống."
+        )
+
+    target_role_str = ROLE_MAP.get(user_in.role_name, "LECTURER")
+    role = db.query(Role).filter(Role.name == target_role_str).first()
+    role_id = role.id if role else 2
+
+    new_user = User(
+        full_name=user_in.full_name,
+        email=user_in.email,
+        user_code=user_in.user_code,
+        faculty=user_in.faculty,
+        role_id=role_id,
+        hashed_password=get_password_hash(user_in.password),
+        is_active=True,
+        is_blocked=False
+    )
+    
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    audit = AuditLog(
+        user_id=admin.id,
+        action="USER_CREATE",
+        target_entity="User",
+        target_id=new_user.id,
+        details={"created_email": new_user.email, "role": target_role_str}
+    )
+    db.add(audit)
+    db.commit()
+
+    return APIResponse(message="Tạo tài khoản thành công!", data={"id": new_user.id})
+
+
+@router.put("/users/{user_id}", response_model=APIResponse)
+@router.patch("/users/{user_id}", response_model=APIResponse)
+def update_user_details(
+    user_id: int,
+    user_in: AdminUserUpdateRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_role(["ADMIN"]))
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Người dùng không tồn tại.")
+
+    input_role = user_in.role_name or user_in.role
+    if input_role:
+        role_code = ROLE_MAP.get(input_role, input_role)
+        role = db.query(Role).filter((Role.name == role_code) | (Role.name == input_role)).first()
+        if role:
+            user.role_id = role.id
+    elif user_in.role_id:
+        user.role_id = user_in.role_id
+
+    if user_in.full_name is not None:
+        user.full_name = user_in.full_name
+    if user_in.user_code is not None:
+        user.user_code = user_in.user_code
+    if user_in.faculty is not None:
+        user.faculty = user_in.faculty
+
+    db.commit()
+    db.refresh(user)
+
+    return APIResponse(message="Cập nhật tài khoản thành công!")
+
+
 @router.put("/users/{user_id}/status", response_model=APIResponse)
 def toggle_user_block_status(
     user_id: int,
@@ -105,7 +263,6 @@ def toggle_user_block_status(
 
     user.is_blocked = is_blocked
     
-    # Audit Log
     action = "USER_BLOCK" if is_blocked else "USER_UNBLOCK"
     audit = AuditLog(
         user_id=admin.id,
@@ -119,6 +276,7 @@ def toggle_user_block_status(
 
     msg = f"Đã {'khóa' if is_blocked else 'mở khóa'} tài khoản {user.email} thành công."
     return APIResponse(message=msg)
+
 
 @router.get("/audit-logs", response_model=APIResponse)
 def get_audit_logs(
@@ -141,7 +299,7 @@ def get_audit_logs(
             "action": l.action,
             "target_entity": l.target_entity,
             "target_id": l.target_id,
-            "details": l.details,
+            "details": format_audit_details(l.action, l.details),
             "ip_address": l.ip_address,
             "created_at": l.created_at
         })

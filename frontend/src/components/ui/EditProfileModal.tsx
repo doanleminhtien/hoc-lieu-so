@@ -67,32 +67,32 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
       case 'ADMIN':
         return 'Quản trị viên Hệ thống';
       case 'LECTURER':
-        return 'Tiến sĩ / Giảng viên';
+        return 'Tiến sĩ / Giảng viên chính thức';
       case 'STUDENT':
-        return 'Sinh viên';
+        return 'Sinh viên chính quy';
       default:
         return roleName;
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col">
         
         {/* Header */}
-        <div className="px-6 py-5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+        <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-md shadow-indigo-200">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
               <UserIcon className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-slate-900 text-lg">Chỉnh Sửa Hồ Sơ Cá Nhân</h3>
-              <p className="text-xs text-slate-500">Cập nhật thông tin tài khoản người dùng</p>
+              <h3 className="font-extrabold text-slate-900 text-base">Hồ Sơ Cá Nhân</h3>
+              <p className="text-xs text-slate-500">Cập nhật thông tin định danh người dùng</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-xl transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-lg transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -103,7 +103,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
           
           {message && (
             <div
-              className={`p-4 rounded-2xl text-xs font-semibold flex items-center space-x-2.5 ${
+              className={`p-3.5 rounded-xl text-xs font-semibold flex items-center space-x-2 ${
                 message.type === 'success'
                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                   : 'bg-rose-50 text-rose-700 border border-rose-200'
@@ -121,7 +121,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
           {/* Email (Read-only) */}
           <div>
             <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">
-              Email Hệ Thống (Không thể thay đổi)
+              Email Hệ Thống (Cố định)
             </label>
             <div className="relative">
               <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -140,12 +140,12 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
               Vai Trò Người Dùng
             </label>
             <div className="relative">
-              <Shield className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-500" />
+              <Shield className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-600" />
               <input
                 type="text"
                 disabled
                 value={getRoleLabel(user.role_name)}
-                className="w-full pl-10 pr-4 py-2.5 bg-indigo-50/50 border border-indigo-100 rounded-xl text-xs font-bold text-indigo-700 cursor-not-allowed"
+                className="w-full pl-10 pr-4 py-2.5 bg-blue-50/60 border border-blue-100 rounded-xl text-xs font-bold text-blue-700 cursor-not-allowed"
               />
             </div>
           </div>
@@ -162,16 +162,16 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="Nhập họ và tên đầy đủ..."
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+                placeholder="Nhập họ và tên..."
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all"
               />
             </div>
           </div>
 
-          {/* User Code (MSSV / Mã Giảng viên) */}
+          {/* User Code */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-              Mã Định Danh (MSSV / Mã Cán bộ / Mã Giảng viên)
+              Mã Định Danh (MSSV / Mã Giảng viên)
             </label>
             <div className="relative">
               <IdCard className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -179,16 +179,16 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                 type="text"
                 value={userCode}
                 onChange={(e) => setUserCode(e.target.value)}
-                placeholder="VD: SV2200004825 hoặc GV202601"
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+                placeholder="VD: 2200000873"
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all font-mono"
               />
             </div>
           </div>
 
-          {/* Faculty / Unit */}
+          {/* Faculty */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-              Khoa / Phụ Trách / Đơn Vị Đào Tạo
+              Khoa / Đơn Vị Đào Tạo
             </label>
             <div className="relative">
               <Building className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -197,24 +197,24 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                 value={faculty}
                 onChange={(e) => setFaculty(e.target.value)}
                 placeholder="VD: Khoa Công Nghệ Thông Tin"
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all"
               />
             </div>
           </div>
 
           {/* Action Buttons */}
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-3">
+          <div className="pt-4 border-t border-slate-100 flex items-center justify-end space-x-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
             >
               Hủy bỏ
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-200 transition-all flex items-center space-x-1.5 disabled:opacity-50"
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center space-x-1.5 disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
               <span>{saving ? 'Đang lưu...' : 'Lưu Thay Đổi'}</span>

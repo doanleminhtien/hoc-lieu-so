@@ -163,6 +163,44 @@ async def create_material(
     material = MaterialService.create_material(db, mat_in, current_user.id, file, storage)
     return APIResponse(message="Tạo học liệu thành công (Trạng thái: DRAFT).", data={"id": material.id, "slug": material.slug})
 
+@router.get("/history/me", response_model=APIResponse)
+def get_my_reading_history(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    subquery = db.query(
+        MaterialView.material_id,
+        func.max(MaterialView.viewed_at).label("latest_viewed_at")
+    ).filter(
+        MaterialView.user_id == current_user.id
+    ).group_by(MaterialView.material_id).subquery()
+
+    query = db.query(Material, subquery.c.latest_viewed_at).join(
+        subquery, Material.id == subquery.c.material_id
+    ).filter(Material.is_deleted == False)
+
+    total = query.count()
+    results = query.order_by(desc(subquery.c.latest_viewed_at)).offset((page - 1) * limit).limit(limit).all()
+
+    items = []
+    for mat, viewed_at in results:
+        items.append({
+            "id": mat.id,
+            "title": mat.title,
+            "slug": mat.slug,
+            "subject": mat.subject,
+            "course_code": mat.course_code,
+            "category_name": mat.category.name if mat.category else "Chưa phân loại",
+            "author_name": mat.author.full_name if mat.author else "Giảng viên",
+            "view_count": mat.view_count,
+            "download_count": mat.download_count,
+            "viewed_at": viewed_at
+        })
+
+    return APIResponse(data={"items": items, "total": total, "page": page, "limit": limit})
+
 @router.get("/{material_id}", response_model=APIResponse)
 def get_material_detail(
     material_id: int,
@@ -276,6 +314,13 @@ async def download_material_file(
     if not MaterialService.check_access_permission(material, current_user):
         raise HTTPException(status_code=403, detail="Bạn không có quyền tải tập tin này.")
 
+    # Check allow_download flag
+    if not material.allow_download:
+        user_role = current_user.role.name if current_user and current_user.role else "STUDENT"
+        is_owner = current_user and current_user.id == material.author_id
+        if user_role != "ADMIN" and not is_owner:
+            raise HTTPException(status_code=403, detail="Tác giả không cho phép tải tập tin này về máy, chỉ hỗ trợ xem trực tuyến.")
+
     mat_file = None
     if file_id:
         mat_file = db.query(MaterialFile).filter(MaterialFile.id == file_id, MaterialFile.material_id == material_id).first()
@@ -309,9 +354,21 @@ async def download_material_file(
 @router.put("/{material_id}", response_model=APIResponse)
 def update_material(
     material_id: int,
-    req: MaterialUpdate = Body(...),
+    title: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    subject: Optional[str] = Form(None),
+    course_code: Optional[str] = Form(None),
+    academic_year: Optional[str] = Form(None),
+    semester: Optional[int] = Form(None),
+    faculty: Optional[str] = Form(None),
+    language: Optional[str] = Form(None),
+    category_id: Optional[int] = Form(None),
+    access_level: Optional[str] = Form(None),
+    allow_download: Optional[bool] = Form(None),
+    file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    storage: BaseStorageProvider = Depends(get_storage_provider)
 ):
     material = db.query(Material).filter(Material.id == material_id, Material.is_deleted == False).first()
     if not material:
@@ -321,41 +378,28 @@ def update_material(
     if user_role != "ADMIN" and material.author_id != current_user.id:
         raise HTTPException(status_code=403, detail="Bạn không phải tác giả học liệu này.")
 
-    # Only DRAFT or REJECTED materials can be edited by Lecturer
     if user_role != "ADMIN" and material.approval_status not in ["DRAFT", "REJECTED"]:
         raise HTTPException(status_code=400, detail="Chỉ có thể chỉnh sửa học liệu ở trạng thái BẢN NHÁP hoặc BỊ TỪ CHỐI.")
 
-    if req.title:
-        material.title = req.title
-    if req.description is not None:
-        material.description = req.description
-    if req.subject:
-        material.subject = req.subject
-    if req.course_code is not None:
-        material.course_code = req.course_code
-    if req.academic_year is not None:
-        material.academic_year = req.academic_year
-    if req.semester is not None:
-        material.semester = req.semester
-    if req.faculty is not None:
-        material.faculty = req.faculty
-    if req.language:
-        material.language = req.language
-    if req.category_id:
-        category = db.query(Category).filter(Category.id == req.category_id).first()
-        if not category:
-            raise HTTPException(status_code=400, detail="Danh mục không tồn tại.")
-        material.category_id = req.category_id
-    if req.access_level:
-        material.access_level = req.access_level
+    mat_in = MaterialUpdate(
+        title=title,
+        description=description,
+        subject=subject,
+        course_code=course_code,
+        academic_year=academic_year,
+        semester=semester,
+        faculty=faculty,
+        language=language,
+        category_id=category_id,
+        access_level=access_level,
+        allow_download=allow_download
+    )
 
-    # If status was REJECTED, reset to DRAFT so lecturer can resubmit
-    if material.approval_status == "REJECTED":
-        material.approval_status = "DRAFT"
-
-    db.commit()
-    db.refresh(material)
-    return APIResponse(message="Cập nhật học liệu thành công.", data={"id": material.id, "approval_status": material.approval_status})
+    updated_material = MaterialService.update_material(db, material, mat_in, file, storage)
+    return APIResponse(
+        message="Cập nhật học liệu thành công.",
+        data={"id": updated_material.id, "approval_status": updated_material.approval_status}
+    )
 
 @router.delete("/{material_id}", response_model=APIResponse)
 def delete_material(

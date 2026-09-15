@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { AcademicLayout } from '../components/layout/AcademicLayout';
 import { LandingPage } from '../pages/LandingPage';
 import { MaterialsPage } from '../pages/MaterialsPage';
 import { MaterialDetailPage } from '../pages/MaterialDetailPage';
@@ -14,7 +15,11 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: strin
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400">Đang tải...</div>;
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400 text-xs font-semibold">
+        Đang tải hệ thống...
+      </div>
+    );
   }
 
   if (!user) {
@@ -31,18 +36,44 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: strin
 export const AppRoutes: React.FC = () => {
   return (
     <Routes>
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/materials" element={<MaterialsPage />} />
-      <Route path="/materials/:id" element={<MaterialDetailPage />} />
+      {/* Auth Pages (Standalone Full Screen) */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
 
-      {/* Protected Routes */}
+      {/* Main Workspace Pages wrapped in AcademicLayout */}
+      <Route
+        path="/"
+        element={
+          <AcademicLayout>
+            <LandingPage />
+          </AcademicLayout>
+        }
+      />
+      <Route
+        path="/materials"
+        element={
+          <AcademicLayout>
+            <MaterialsPage />
+          </AcademicLayout>
+        }
+      />
+      <Route
+        path="/materials/:id"
+        element={
+          <AcademicLayout>
+            <MaterialDetailPage />
+          </AcademicLayout>
+        }
+      />
+
+      {/* Protected Workspaces */}
       <Route
         path="/admin/dashboard"
         element={
           <ProtectedRoute allowedRoles={['ADMIN']}>
-            <AdminDashboard />
+            <AcademicLayout>
+              <AdminDashboard />
+            </AcademicLayout>
           </ProtectedRoute>
         }
       />
@@ -51,7 +82,9 @@ export const AppRoutes: React.FC = () => {
         path="/lecturer/dashboard"
         element={
           <ProtectedRoute allowedRoles={['LECTURER', 'ADMIN']}>
-            <LecturerDashboard />
+            <AcademicLayout>
+              <LecturerDashboard />
+            </AcademicLayout>
           </ProtectedRoute>
         }
       />
@@ -60,7 +93,9 @@ export const AppRoutes: React.FC = () => {
         path="/student/dashboard"
         element={
           <ProtectedRoute allowedRoles={['STUDENT', 'LECTURER', 'ADMIN']}>
-            <StudentDashboard />
+            <AcademicLayout>
+              <StudentDashboard />
+            </AcademicLayout>
           </ProtectedRoute>
         }
       />

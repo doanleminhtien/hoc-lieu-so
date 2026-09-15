@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Navbar } from '../components/ui/Navbar';
-import { FileText, Download, Eye, Heart, User as UserIcon, Calendar, Tag as TagIcon, Shield, ArrowLeft, Building, ChevronRight } from 'lucide-react';
+import { Download, Eye, Heart, Calendar, ArrowLeft, Building, ChevronRight, Loader2, ShieldAlert, FileText, CheckCircle } from 'lucide-react';
 import axiosClient from '../api/axiosClient';
 import { Material, APIResponse } from '../types';
 import { Badge } from '../components/ui/Badge';
+import { ApprovalWorkflowStepper } from '../components/ui/ApprovalWorkflowStepper';
 import { LecturerProfileModal } from '../components/ui/LecturerProfileModal';
+import { CommentSection } from '../components/ui/CommentSection';
+import { ReviewSection } from '../components/ui/ReviewSection';
 
 export const MaterialDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -14,6 +16,7 @@ export const MaterialDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isFav, setIsFav] = useState(false);
   const [lecturerModalId, setLecturerModalId] = useState<number | null>(null);
+  const [downloadingFileId, setDownloadingFileId] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -32,10 +35,46 @@ export const MaterialDetailPage: React.FC = () => {
     if (id) fetchDetail();
   }, [id]);
 
-  const handleDownload = (fileId?: number) => {
+  const handleDownload = async (fileId?: number, fileName?: string) => {
     if (!material) return;
-    const url = `/api/v1/materials/${material.id}/download${fileId ? `?file_id=${fileId}` : ''}`;
-    window.open(url, '_blank');
+    const targetFileId = fileId || (material.files && material.files.length > 0 ? material.files[0].id : undefined);
+    if (!targetFileId) return;
+
+    setDownloadingFileId(targetFileId);
+    try {
+      const response: any = await axiosClient.get(`/materials/${material.id}/download?file_id=${targetFileId}`, {
+        responseType: 'blob',
+      });
+
+      const blob = new Blob([response]);
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.setAttribute('download', fileName || 'hoc_lieu_so');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      // Increment download count locally for instant UI update
+      setMaterial((prev) => (prev ? { ...prev, download_count: prev.download_count + 1 } : prev));
+    } catch (err: any) {
+      let errMsg = 'Bạn không có quyền tải tập tin này hoặc tập tin không tồn tại.';
+      if (err instanceof Blob) {
+        try {
+          const text = await err.text();
+          const json = JSON.parse(text);
+          if (json.detail) errMsg = json.detail;
+        } catch (_) {}
+      } else if (err?.detail) {
+        errMsg = err.detail;
+      } else if (err?.message) {
+        errMsg = err.message;
+      }
+      alert(errMsg);
+    } finally {
+      setDownloadingFileId(null);
+    }
   };
 
   const handleFavoriteToggle = async () => {
@@ -52,27 +91,21 @@ export const MaterialDetailPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
-        <Navbar />
-        <div className="flex-1 flex items-center justify-center p-8 text-slate-400">
-          Đang nạp thông tin học liệu...
-        </div>
+      <div className="p-16 text-center text-slate-400 text-xs">
+        Đang nạp thông tin chi tiết học liệu...
       </div>
     );
   }
 
   if (error || !material) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
-        <Navbar />
-        <div className="flex-1 max-w-2xl mx-auto px-4 flex flex-col items-center justify-center text-center py-16">
-          <Shield className="w-16 h-16 text-rose-500 mb-4" />
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Không Thể Truy Cập Học Liệu</h2>
-          <p className="text-sm text-slate-500 mb-6">{error || 'Tài liệu không tồn tại.'}</p>
-          <Link to="/materials" className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold text-sm shadow-md">
-            Quay lại Kho Học Liệu
-          </Link>
-        </div>
+      <div className="max-w-2xl mx-auto px-4 flex flex-col items-center justify-center text-center py-16">
+        <ShieldAlert className="w-16 h-16 text-rose-500 mb-4" />
+        <h2 className="text-xl font-extrabold text-slate-900 mb-2">Không Thể Truy Cập Học Liệu</h2>
+        <p className="text-xs text-slate-500 mb-6">{error || 'Tài liệu không tồn tại.'}</p>
+        <Link to="/materials" className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-xs shadow-md">
+          Quay lại Kho Học Liệu
+        </Link>
       </div>
     );
   }
@@ -82,157 +115,224 @@ export const MaterialDetailPage: React.FC = () => {
   const initial = authorName ? authorName.charAt(0).toUpperCase() : 'G';
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      <Navbar />
-
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
-        
-        {/* Back Link */}
-        <Link to="/materials" className="inline-flex items-center space-x-1 text-xs font-semibold text-slate-500 hover:text-indigo-600 mb-6 transition-colors">
+    <div className="space-y-6">
+      
+      {/* Back Navigation Bar */}
+      <div className="flex items-center justify-between">
+        <Link
+          to="/materials"
+          className="inline-flex items-center space-x-1.5 text-xs font-bold text-slate-500 hover:text-blue-600 transition-colors"
+        >
           <ArrowLeft className="w-4 h-4" />
-          <span>Trở về danh sách học liệu</span>
+          <span>Trở về Kho Học Liệu</span>
         </Link>
 
-        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden p-6 sm:p-8">
-          
-          {/* Header Badges */}
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-            <div className="flex items-center space-x-2">
-              <Badge type="access" value={material.access_level} />
-              <Badge type="status" value={material.approval_status} />
-              <span className="text-xs font-semibold text-indigo-700 px-3 py-1 bg-indigo-50 border border-indigo-100 rounded-full">
-                {material.category_name}
-              </span>
+        <button
+          onClick={handleFavoriteToggle}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center space-x-1.5 ${
+            isFav
+              ? 'bg-rose-50 text-rose-600 border-rose-200'
+              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <Heart className={`w-4 h-4 ${isFav ? 'fill-current' : ''}`} />
+          <span>{isFav ? 'Đã yêu thích' : 'Lưu yêu thích'}</span>
+        </button>
+      </div>
+
+      {/* Approval Lifecycle Stepper UI */}
+      <ApprovalWorkflowStepper
+        status={material.approval_status}
+        rejectionReason={material.rejection_reason}
+      />
+
+      {/* Academic Workspace Detail Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Left Column (2/3 width): Main Document Details & Files */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-6">
+            
+            {/* Title & Badges */}
+            <div>
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <span className="px-3 py-1 bg-blue-50 text-blue-700 font-bold rounded-lg text-xs border border-blue-100">
+                  {material.category_name}
+                </span>
+                <Badge type="access" value={material.access_level} />
+                <Badge type="status" value={material.approval_status} />
+              </div>
+
+              <h1 className="text-2xl font-extrabold text-slate-900 leading-tight">
+                {material.title}
+              </h1>
             </div>
 
-            <button
-              onClick={handleFavoriteToggle}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold border transition-all flex items-center space-x-1.5 ${
-                isFav
-                  ? 'bg-rose-50 text-rose-600 border-rose-200'
-                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              <Heart className={`w-4 h-4 ${isFav ? 'fill-current' : ''}`} />
-              <span>{isFav ? 'Đã yêu thích' : 'Lưu yêu thích'}</span>
-            </button>
-          </div>
+            {/* Document Description */}
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2">
+                Tóm Tắt Nội Dung Học Liệu
+              </h3>
+              <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line bg-slate-50 p-4 rounded-xl border border-slate-100">
+                {material.description || 'Chưa có tóm tắt nội dung chi tiết cho học liệu này.'}
+              </p>
+            </div>
 
-          {/* Author Card Section (Requirement 2) */}
-          <div
-            onClick={() => setLecturerModalId(material.author?.id || material.author_id)}
-            className="flex items-center space-x-4 p-4 sm:p-5 bg-gradient-to-r from-indigo-50/80 via-purple-50/40 to-slate-50 rounded-2xl border border-indigo-100 mb-6 cursor-pointer hover:border-indigo-300 transition-all group shadow-sm"
-          >
-            <div className="relative flex-shrink-0">
-              {material.author?.avatar_url ? (
-                <img
-                  src={material.author.avatar_url}
-                  alt={authorName}
-                  className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-md"
-                />
+            {/* Attached Files & Downloading Panel */}
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">
+                Tập Tin Đính Kèm ({material.files ? material.files.length : 0})
+              </h3>
+
+              {material.files && material.files.length > 0 ? (
+                <div className="space-y-3">
+                  {material.files.map((f) => (
+                    <div
+                      key={f.id}
+                      className="p-4 bg-slate-50 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center space-x-3 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-white shadow-xs flex flex-col items-center justify-center text-blue-600 font-extrabold text-xs uppercase border border-slate-200 flex-shrink-0">
+                          <FileText className="w-4 h-4 text-blue-600 mb-0.5" />
+                          <span className="text-[9px] font-black">{f.file_extension.replace('.', '')}</span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-slate-900 text-xs truncate">{f.original_name}</p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Dung lượng: {(f.file_size / (1024 * 1024)).toFixed(2)} MB
+                          </p>
+                        </div>
+                      </div>
+
+                      {material.allow_download === false ? (
+                        <span className="px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold rounded-xl text-center">
+                          Chỉ hỗ trợ xem trực tuyến
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleDownload(f.id, f.original_name)}
+                          disabled={downloadingFileId === f.id}
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center space-x-1.5 flex-shrink-0"
+                        >
+                          {downloadingFileId === f.id ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Đang tải...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Download className="w-3.5 h-3.5" />
+                              <span>Tải về máy</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               ) : (
-                <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 text-white font-bold text-lg flex items-center justify-center border-2 border-white shadow-md">
-                  {initial}
+                <div className="p-6 bg-slate-50 rounded-xl text-center text-slate-400 text-xs">
+                  Chưa có tập tin đính kèm cho học liệu này.
                 </div>
               )}
             </div>
 
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center space-x-2">
-                <h3 className="text-base font-extrabold text-slate-900 group-hover:text-indigo-600 transition-colors truncate">
+          </div>
+
+          {/* Review Section */}
+          <ReviewSection materialId={material.id} />
+
+          {/* Comment Section */}
+          <CommentSection materialId={material.id} />
+        </div>
+
+        {/* Right Column (1/3 width): Metadata & Lecturer Profile */}
+        <div className="space-y-6">
+          
+          {/* Lecturer Card */}
+          <div
+            onClick={() => setLecturerModalId(material.author?.id || material.author_id)}
+            className="p-5 bg-white rounded-2xl border border-slate-200/80 shadow-xs cursor-pointer hover:border-blue-300 transition-all group"
+          >
+            <p className="text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-3">Tác Giả & Giảng Viên Phụ Trách</p>
+            <div className="flex items-center space-x-3">
+              {material.author?.avatar_url ? (
+                <img
+                  src={material.author.avatar_url}
+                  alt={authorName}
+                  className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-xs flex-shrink-0"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-blue-600 text-white font-extrabold text-base flex items-center justify-center flex-shrink-0 shadow-xs">
+                  {initial}
+                </div>
+              )}
+
+              <div className="min-w-0 flex-1">
+                <h4 className="font-extrabold text-slate-900 text-sm group-hover:text-blue-600 transition-colors truncate">
                   {authorName}
-                </h3>
-                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded-md flex-shrink-0">
-                  Giảng viên
+                </h4>
+                <p className="text-xs text-slate-500 truncate mt-0.5">{facultyName}</p>
+                <span className="inline-block mt-1 px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded">
+                  Giảng viên chính thức
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5 truncate">
-                Giảng viên · <span className="font-semibold text-slate-700">{facultyName}</span>
-              </p>
             </div>
-
-            <div className="hidden sm:flex items-center space-x-1 text-xs font-semibold text-indigo-600 group-hover:translate-x-1 transition-transform flex-shrink-0">
-              <span>Xem hồ sơ</span>
+            <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-blue-600 font-bold group-hover:translate-x-1 transition-transform">
+              <span>Xem hồ sơ công khai</span>
               <ChevronRight className="w-4 h-4" />
             </div>
           </div>
 
-          {/* Title */}
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 leading-tight mb-4">
-            {material.title}
-          </h1>
+          {/* Document Properties Meta Box */}
+          <div className="p-5 bg-white rounded-2xl border border-slate-200/80 shadow-xs space-y-4 text-xs">
+            <h4 className="font-extrabold text-slate-900 uppercase tracking-wider text-[11px] pb-2 border-b border-slate-100">
+              Thông Tin Học Thuật
+            </h4>
 
-          {/* Metadata Bar */}
-          <div className="flex flex-wrap items-center gap-6 py-4 border-y border-slate-100 text-xs text-slate-500 mb-6">
-            <div className="flex items-center space-x-2">
-              <Calendar className="w-4 h-4 text-slate-400" />
-              <span>Môn học: <strong className="text-slate-800">{material.subject} {material.course_code ? `(${material.course_code})` : ''}</strong></span>
+            <div className="flex items-center justify-between py-1">
+              <span className="text-slate-500">Môn học:</span>
+              <strong className="text-slate-900 font-bold">{material.subject}</strong>
             </div>
-            {material.created_at && (
-              <div className="flex items-center space-x-2">
-                <Calendar className="w-4 h-4 text-slate-400" />
-                <span>Ngày đăng: <strong className="text-slate-800">{new Date(material.created_at).toLocaleDateString('vi-VN')}</strong></span>
+
+            {material.course_code && (
+              <div className="flex items-center justify-between py-1">
+                <span className="text-slate-500">Mã học phần:</span>
+                <span className="px-2 py-0.5 bg-slate-100 text-slate-800 rounded font-mono font-bold">
+                  {material.course_code}
+                </span>
               </div>
             )}
-            <div className="flex items-center space-x-4 ml-auto text-slate-400">
-              <span className="flex items-center space-x-1">
-                <Eye className="w-4 h-4" />
-                <span className="font-semibold text-slate-700">{material.view_count} lượt xem</span>
-              </span>
-              <span className="flex items-center space-x-1">
-                <Download className="w-4 h-4 text-indigo-500" />
-                <span className="font-semibold text-indigo-600">{material.download_count} lượt tải</span>
-              </span>
+
+            <div className="flex items-center justify-between py-1">
+              <span className="text-slate-500">Quyền truy cập:</span>
+              <Badge type="access" value={material.access_level} />
             </div>
-          </div>
 
-          {/* Description */}
-          <div className="mb-8">
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2">Mô Tả Học Liệu</h3>
-            <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-line bg-slate-50 p-4 rounded-2xl border border-slate-100">
-              {material.description || 'Chưa có mô tả chi tiết cho học liệu này.'}
-            </p>
-          </div>
+            <div className="flex items-center justify-between py-1">
+              <span className="text-slate-500">Lượt xem:</span>
+              <span className="font-bold text-slate-900">{material.view_count}</span>
+            </div>
 
-          {/* Attached Files & Download Action */}
-          <div>
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-4">Danh Sách Tập Tin Đính Kèm ({material.files ? material.files.length : 0})</h3>
-            
-            {material.files && material.files.length > 0 ? (
-              <div className="space-y-3">
-                {material.files.map((f) => (
-                  <div key={f.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between hover:bg-indigo-50/50 transition-colors">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-indigo-600 font-bold text-xs uppercase border border-slate-200">
-                        {f.file_extension.replace('.', '')}
-                      </div>
-                      <div>
-                        <p className="font-bold text-slate-900 text-sm">{f.original_name}</p>
-                        <p className="text-xs text-slate-400 mt-0.5">Dung lượng: {(f.file_size / (1024 * 1024)).toFixed(2)} MB</p>
-                      </div>
-                    </div>
+            <div className="flex items-center justify-between py-1">
+              <span className="text-slate-500">Lượt tải:</span>
+              <span className="font-bold text-blue-600">{material.download_count}</span>
+            </div>
 
-                    <button
-                      onClick={() => handleDownload(f.id)}
-                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-md shadow-indigo-200 transition-all flex items-center space-x-2"
-                    >
-                      <Download className="w-4 h-4" />
-                      <span>Tải về an toàn</span>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-6 bg-slate-50 rounded-2xl text-center text-slate-400 text-xs">
-                Chưa có tập tin đính kèm cho học liệu này.
+            {material.created_at && (
+              <div className="flex items-center justify-between py-1">
+                <span className="text-slate-500">Ngày đăng:</span>
+                <span className="font-medium text-slate-700">
+                  {new Date(material.created_at).toLocaleDateString('vi-VN')}
+                </span>
               </div>
             )}
           </div>
 
         </div>
-      </main>
 
-      {/* Lecturer Mini Profile Modal */}
+      </div>
+
       <LecturerProfileModal
         lecturerId={lecturerModalId}
         isOpen={lecturerModalId !== null}
